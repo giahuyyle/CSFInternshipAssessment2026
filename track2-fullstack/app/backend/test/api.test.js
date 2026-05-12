@@ -30,7 +30,7 @@ after(async () => {
 });
 
 function seedTestData() {
-  db.exec('DELETE FROM health_events; DELETE FROM animals; DELETE FROM paddocks;');
+  db.exec('DELETE FROM weights; DELETE FROM health_events; DELETE FROM animals; DELETE FROM paddocks;');
 
   const northId = db.prepare(
     'INSERT INTO paddocks (name, capacity, animal_count) VALUES (?, ?, 0)'

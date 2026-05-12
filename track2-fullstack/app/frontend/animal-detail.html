@@ -18,6 +18,25 @@
     <a href="animals.html" class="back-link">← Back to Animals</a>
     <div id="animal-detail"><p class="loading">Loading…</p></div>
 
+    <section id="weight-section" style="display:none">
+      <h3>Weight History</h3>
+      <p id="latest-weight" class="latest-weight">Latest: Not recorded</p>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Weight</th><th>Notes</th></tr>
+        </thead>
+        <tbody id="weights-body"></tbody>
+      </table>
+
+      <h4>Log Weight</h4>
+      <form id="weight-form">
+        <label>Weight (kg) <input type="number" name="weight_kg" min="0.1" step="0.1" required></label>
+        <label>Date <input type="date" name="date" required></label>
+        <label>Notes <input type="text" name="notes" placeholder="Optional"></label>
+        <button type="submit">Log Weight</button>
+      </form>
+    </section>
+
     <section id="health-section" style="display:none">
       <h3>Health Events</h3>
       <table>
@@ -57,11 +76,11 @@
       container.appendChild(element);
     }
 
-    function showTableMessage(tbody, message, className = 'empty') {
+    function showTableMessage(tbody, message, className = 'empty', colSpan = 4) {
       tbody.replaceChildren();
       const row = document.createElement('tr');
       const cell = document.createElement('td');
-      cell.colSpan = 4;
+      cell.colSpan = colSpan;
       cell.className = className;
       cell.textContent = message;
       row.appendChild(cell);
@@ -76,9 +95,22 @@
       dl.append(dt, dd);
     }
 
+    function formatDisplayDate(value) {
+      const [year, month, day] = value.split('-').map(Number);
+      if (!year || !month || !day) return value;
+
+      return new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(Date.UTC(year, month - 1, day)));
+    }
+
     async function load() {
       const detail = document.getElementById('animal-detail');
       const eventsBody = document.getElementById('events-body');
+      const weightsBody = document.getElementById('weights-body');
       try {
         const [animal, paddocks] = await Promise.all([
           api.get(`/animals/${animalId}`),
@@ -107,10 +139,12 @@
         detail.append(header, dl);
 
         document.getElementById('health-section').style.display = 'block';
-        await loadEvents();
+        document.getElementById('weight-section').style.display = 'block';
+        await Promise.all([loadEvents(), loadWeights()]);
       } catch (err) {
         showMessage(detail, 'Unable to load animal details. Please try again.', 'error');
         showTableMessage(eventsBody, 'Unable to load health events.', 'error');
+        showTableMessage(weightsBody, 'Unable to load weight history.', 'error', 3);
       }
     }
 
@@ -138,6 +172,36 @@
       }
     }
 
+    async function loadWeights() {
+      const tbody = document.getElementById('weights-body');
+      const latestWeight = document.getElementById('latest-weight');
+      try {
+        const weights = await api.get(`/animals/${animalId}/weights`);
+        if (!weights.length) {
+          latestWeight.textContent = 'Latest: Not recorded';
+          showTableMessage(tbody, 'No weights recorded.', 'empty', 3);
+          return;
+        }
+
+        const latest = weights[0];
+        latestWeight.textContent = `Latest: ${latest.weight_kg} kg on ${formatDisplayDate(latest.date)}`;
+
+        tbody.replaceChildren();
+        weights.forEach(weight => {
+          const row = document.createElement('tr');
+          [formatDisplayDate(weight.date), `${weight.weight_kg} kg`, weight.notes ?? '—'].forEach(value => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+          });
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        latestWeight.textContent = 'Latest: Unable to load';
+        showTableMessage(tbody, 'Unable to load weight history.', 'error', 3);
+      }
+    }
+
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(e.target));
@@ -147,6 +211,19 @@
         await loadEvents();
       } catch (err) {
         showTableMessage(document.getElementById('events-body'), 'Unable to save health event. Please try again.', 'error');
+      }
+    });
+
+    document.getElementById('weight-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      data.weight_kg = Number(data.weight_kg);
+      try {
+        await api.post(`/animals/${animalId}/weights`, data);
+        e.target.reset();
+        await loadWeights();
+      } catch (err) {
+        showTableMessage(document.getElementById('weights-body'), 'Unable to save weight. Please check the measurement and try again.', 'error', 3);
       }
     });
 

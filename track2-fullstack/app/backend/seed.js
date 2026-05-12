@@ -2,7 +2,7 @@ const { db, initDb } = require('./db');
 
 initDb();
 
-db.exec('DELETE FROM health_events; DELETE FROM animals; DELETE FROM paddocks;');
+db.exec('DELETE FROM weights; DELETE FROM health_events; DELETE FROM animals; DELETE FROM paddocks;');
 
 const insertPaddock = db.prepare('INSERT INTO paddocks (name, capacity, animal_count) VALUES (?, ?, 0)');
 const northId = insertPaddock.run('North Paddock', 50).lastInsertRowid;
@@ -52,6 +52,25 @@ animalIds.slice(0, 6).forEach((animalId, i) => {
     `2024-${String((i % 9) + 1).padStart(2, '0')}-15`,
     vets[i % 2]
   );
+});
+
+const insertWeight = db.prepare(
+  'INSERT INTO weights (animal_id, weight_kg, date, notes) VALUES (?, ?, ?, ?)'
+);
+
+const weightData = [
+  [animalIds[0], 41.8, '2024-06-01', 'Spring weigh-in'],
+  [animalIds[0], 45.2, '2024-11-15', 'Post-shearing weigh-in'],
+  [animalIds[1], 52.6, '2024-05-20', 'Routine weigh-in'],
+  [animalIds[1], 55.1, '2024-10-20', 'Pre-winter check'],
+  [animalIds[2], 37.4, '2024-07-10', 'Growth check'],
+  [animalIds[3], 49.3, '2024-08-05', null],
+  [animalIds[4], 44.9, '2024-09-12', 'Feed adjustment follow-up'],
+  [animalIds[5], 39.7, '2024-09-30', null],
+];
+
+weightData.forEach(([animalId, weightKg, date, notes]) => {
+  insertWeight.run(animalId, weightKg, date, notes);
 });
 
 console.log('Database seeded successfully.');
