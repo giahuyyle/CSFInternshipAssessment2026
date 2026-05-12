@@ -44,35 +44,72 @@
     let currentPage = 0;
     const LIMIT = 5;
 
+    function showTableMessage(tbody, message, className = 'empty') {
+      tbody.replaceChildren();
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 6;
+      cell.className = className;
+      cell.textContent = message;
+      row.appendChild(cell);
+      tbody.appendChild(row);
+    }
+
+    function paddockNameById(paddocks) {
+      return new Map(paddocks.map(paddock => [paddock.id, paddock.name]));
+    }
+
     async function loadAnimals() {
-      const animals = await api.get(`/animals?page=${currentPage}&limit=${LIMIT}`);
       const tbody = document.getElementById('animals-body');
+      try {
+        const [animals, paddocks] = await Promise.all([
+          api.get(`/animals?page=${currentPage}&limit=${LIMIT}`),
+          api.get('/paddocks'),
+        ]);
+        const paddockNames = paddockNameById(paddocks);
 
-      if (!animals.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">No animals found.</td></tr>';
-        document.getElementById('next-btn').disabled = true;
-        return;
+        if (!animals.length) {
+          showTableMessage(tbody, 'No animals found.');
+          document.getElementById('next-btn').disabled = true;
+          return;
+        }
+
+        tbody.replaceChildren();
+        animals.forEach(a => {
+          const row = document.createElement('tr');
+          const event = a.latest_health_event
+            ? `${a.latest_health_event.event_type} (${a.latest_health_event.date})`
+            : '—';
+          const values = [
+            a.tag_number,
+            a.name,
+            a.breed ?? '—',
+            a.paddock_id ? paddockNames.get(a.paddock_id) ?? `Paddock ${a.paddock_id}` : '—',
+            event,
+          ];
+
+          values.forEach(value => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+          });
+
+          const actionCell = document.createElement('td');
+          const link = document.createElement('a');
+          link.href = `animal-detail.html?id=${a.id}`;
+          link.textContent = 'View';
+          actionCell.appendChild(link);
+          row.appendChild(actionCell);
+
+          tbody.appendChild(row);
+        });
+
+        document.getElementById('page-info').textContent = `Page ${currentPage + 1}`;
+        document.getElementById('prev-btn').disabled = currentPage === 0;
+        document.getElementById('next-btn').disabled = animals.length < LIMIT;
+      } catch (err) {
+        showTableMessage(tbody, 'Unable to load animals. Please try again.', 'error');
       }
-
-      tbody.innerHTML = animals.map(a => {
-        const event = a.latest_health_event
-          ? `${a.latest_health_event.event_type} (${a.latest_health_event.date})`
-          : '—';
-        return `
-          <tr>
-            <td>${a.tag_number}</td>
-            <td>${a.name}</td>
-            <td>${a.breed ?? '—'}</td>
-            <td>${a.paddock_id ?? '—'}</td>
-            <td>${event}</td>
-            <td><a href="animal-detail.html?id=${a.id}">View</a></td>
-          </tr>
-        `;
-      }).join('');
-
-      document.getElementById('page-info').textContent = `Page ${currentPage + 1}`;
-      document.getElementById('prev-btn').disabled = currentPage === 0;
-      document.getElementById('next-btn').disabled = animals.length < LIMIT;
     }
 
     function changePage(dir) {

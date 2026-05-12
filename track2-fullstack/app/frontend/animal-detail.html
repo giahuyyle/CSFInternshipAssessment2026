@@ -49,46 +49,105 @@
     const params = new URLSearchParams(window.location.search);
     const animalId = params.get('id');
 
+    function showMessage(container, message, className = 'empty') {
+      container.replaceChildren();
+      const element = document.createElement('p');
+      element.className = className;
+      element.textContent = message;
+      container.appendChild(element);
+    }
+
+    function showTableMessage(tbody, message, className = 'empty') {
+      tbody.replaceChildren();
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 4;
+      cell.className = className;
+      cell.textContent = message;
+      row.appendChild(cell);
+      tbody.appendChild(row);
+    }
+
+    function appendDetail(dl, label, value) {
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      dl.append(dt, dd);
+    }
+
     async function load() {
-      const animal = await api.get(`/animals/${animalId}`);
+      const detail = document.getElementById('animal-detail');
+      const eventsBody = document.getElementById('events-body');
+      try {
+        const [animal, paddocks] = await Promise.all([
+          api.get(`/animals/${animalId}`),
+          api.get('/paddocks'),
+        ]);
+        const paddock = paddocks.find(p => p.id === animal.paddock_id);
 
-      document.title = `${animal.name} — FarmTracker`;
-      document.getElementById('animal-detail').innerHTML = `
-        <div class="animal-header">
-          <h2>${animal.name}<span class="tag">${animal.tag_number}</span></h2>
-        </div>
-        <dl>
-          <dt>Breed</dt>       <dd>${animal.breed ?? '—'}</dd>
-          <dt>Date of Birth</dt><dd>${animal.date_of_birth ?? '—'}</dd>
-          <dt>Paddock</dt>     <dd>${animal.paddock_id ?? 'Unassigned'}</dd>
-        </dl>
-      `;
+        document.title = `${animal.name} — FarmTracker`;
+        detail.replaceChildren();
 
-      document.getElementById('health-section').style.display = 'block';
-      await loadEvents();
+        const header = document.createElement('div');
+        header.className = 'animal-header';
+        const heading = document.createElement('h2');
+        heading.textContent = animal.name;
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = animal.tag_number;
+        heading.appendChild(tag);
+        header.appendChild(heading);
+
+        const dl = document.createElement('dl');
+        appendDetail(dl, 'Breed', animal.breed ?? '—');
+        appendDetail(dl, 'Date of Birth', animal.date_of_birth ?? '—');
+        appendDetail(dl, 'Paddock', paddock ? paddock.name : 'Unassigned');
+
+        detail.append(header, dl);
+
+        document.getElementById('health-section').style.display = 'block';
+        await loadEvents();
+      } catch (err) {
+        showMessage(detail, 'Unable to load animal details. Please try again.', 'error');
+        showTableMessage(eventsBody, 'Unable to load health events.', 'error');
+      }
     }
 
     async function loadEvents() {
-      const events = await api.get(`/animals/${animalId}/health-events`);
       const tbody = document.getElementById('events-body');
-      tbody.innerHTML = events.length
-        ? events.map(e => `
-            <tr>
-              <td>${e.date}</td>
-              <td>${e.event_type}</td>
-              <td>${e.vet_name ?? '—'}</td>
-              <td>${e.notes ?? '—'}</td>
-            </tr>
-          `).join('')
-        : '<tr><td colspan="4" class="empty">No events recorded.</td></tr>';
+      try {
+        const events = await api.get(`/animals/${animalId}/health-events`);
+        if (!events.length) {
+          showTableMessage(tbody, 'No events recorded.');
+          return;
+        }
+
+        tbody.replaceChildren();
+        events.forEach(e => {
+          const row = document.createElement('tr');
+          [e.date, e.event_type, e.vet_name ?? '—', e.notes ?? '—'].forEach(value => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+          });
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        showTableMessage(tbody, 'Unable to load health events.', 'error');
+      }
     }
 
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(e.target));
-      await api.post(`/animals/${animalId}/health-events`, data);
-      e.target.reset();
-      await loadEvents();
+      try {
+        await api.post(`/animals/${animalId}/health-events`, data);
+        e.target.reset();
+        await loadEvents();
+      } catch (err) {
+        showTableMessage(document.getElementById('events-body'), 'Unable to save health event. Please try again.', 'error');
+      }
     });
 
     load();

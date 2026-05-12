@@ -129,3 +129,4 @@ input:focus, select:focus { outline: 2px solid #4a8c2a; border-color: transparen
 
 .loading { color: #aaa; font-size: 0.9rem; }
 .empty { color: #aaa; font-size: 0.875rem; }
+.error { color: #a33; font-size: 0.875rem; }

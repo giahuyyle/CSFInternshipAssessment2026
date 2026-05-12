@@ -25,21 +25,47 @@
   <script src="app.js"></script>
   <script>
     async function loadPaddocks() {
-      const paddocks = await api.get('/paddocks');
       const grid = document.getElementById('paddocks-grid');
-      if (!paddocks.length) {
-        grid.innerHTML = '<p class="empty">No paddocks found.</p>';
-        return;
+      try {
+        const paddocks = await api.get('/paddocks');
+        grid.replaceChildren();
+
+        if (!paddocks.length) {
+          const empty = document.createElement('p');
+          empty.className = 'empty';
+          empty.textContent = 'No paddocks found.';
+          grid.appendChild(empty);
+          return;
+        }
+
+        paddocks.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'card';
+
+          const name = document.createElement('h3');
+          name.textContent = p.name;
+
+          const stat = document.createElement('p');
+          stat.className = 'stat';
+          stat.textContent = `${p.animal_count} / ${p.capacity} animals`;
+
+          const capacityBar = document.createElement('div');
+          capacityBar.className = 'capacity-bar';
+          const capacityFill = document.createElement('div');
+          capacityFill.className = 'capacity-fill';
+          capacityFill.style.width = `${Math.min(100, Math.round((p.animal_count / p.capacity) * 100))}%`;
+          capacityBar.appendChild(capacityFill);
+
+          card.append(name, stat, capacityBar);
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        grid.replaceChildren();
+        const error = document.createElement('p');
+        error.className = 'error';
+        error.textContent = 'Unable to load paddocks. Please try again.';
+        grid.appendChild(error);
       }
-      grid.innerHTML = paddocks.map(p => `
-        <div class="card">
-          <h3>${p.name}</h3>
-          <p class="stat">${p.animal_count} / ${p.capacity} animals</p>
-          <div class="capacity-bar">
-            <div class="capacity-fill" style="width: ${Math.min(100, Math.round((p.animal_count / p.capacity) * 100))}%"></div>
-          </div>
-        </div>
-      `).join('');
     }
 
     loadPaddocks();
