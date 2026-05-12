@@ -46,9 +46,11 @@ function seedTestData() {
 
   const bellaId = insertAnimal.run('Bella', 'TAG-001', 'Merino', '2021-03-14', northId).lastInsertRowid;
   insertAnimal.run('Daisy', 'TAG-002', 'Dorper', '2020-07-22', southId);
+  insertAnimal.run('Molly', 'TAG-003', 'Merino', '2022-01-05', northId);
 
   db.prepare('UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?').run(northId);
   db.prepare('UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?').run(southId);
+  db.prepare('UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?').run(northId);
 
   db.prepare(
     'INSERT INTO health_events (animal_id, event_type, notes, date, vet_name) VALUES (?, ?, ?, ?, ?)'
@@ -92,6 +94,19 @@ test('GET /api/animals returns animals with latest_health_event field', async ()
   assert.ok(Array.isArray(body));
   assert.ok(body.length > 0);
   assert.ok('latest_health_event' in body[0]);
+});
+
+// Regression test: page numbers must be converted into SQL offsets.
+test('GET /api/animals uses page and limit for pagination offset', async () => {
+  const { body: firstPage } = await get('/animals?page=0&limit=2');
+  const { status, body: secondPage } = await get('/animals?page=1&limit=2');
+  const firstPageIds = firstPage.map(animal => animal.id);
+  const secondPageIds = secondPage.map(animal => animal.id);
+
+  assert.equal(status, 200);
+  assert.equal(firstPage.length, 2);
+  assert.equal(secondPage.length, 1);
+  assert.ok(secondPageIds.every(id => !firstPageIds.includes(id)));
 });
 
 // Verifies fetching an existing animal by ID returns that exact animal.
