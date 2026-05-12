@@ -153,6 +153,18 @@ test('POST /api/animals/:id/health-events creates an event', async () => {
   assert.equal(body.animal_id, id);
 });
 
+// Verifies animal creation follows create-endpoint status code conventions.
+test('POST /api/animals creates an animal with 201 status', async () => {
+  const { status, body } = await post('/animals', {
+    name: 'Created Animal',
+    tag_number: 'TAG-CREATED-001',
+  });
+
+  assert.equal(status, 201);
+  assert.equal(body.name, 'Created Animal');
+  assert.equal(body.tag_number, 'TAG-CREATED-001');
+});
+
 // Regression test: failed animal creation must not leave paddock counts inflated.
 test('POST /api/animals does not change paddock count when insert fails', async () => {
   const { body: paddocksBefore } = await get('/paddocks');

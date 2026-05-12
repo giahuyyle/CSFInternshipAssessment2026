@@ -101,7 +101,7 @@ router.post('/', (req, res) => {
     throw err;
   }
 
-  res.json(animal);
+  res.status(201).json(animal);
 });
 
 router.get('/:id', (req, res) => {
