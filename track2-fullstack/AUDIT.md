@@ -38,4 +38,4 @@
 
 ## Leave For Later
 
-I would defer a frontend framework rewrite, styling polish, and broad end-to-end test coverage. The N+1 latest-health-event query is real architectural debt, but I would address it in `ARCH_PROPOSAL.md` or a later refactor with a joined query that preserves the existing `latest_health_event` response shape.
+I would defer a frontend framework rewrite, styling polish, and broad end-to-end test coverage. The N+1 latest-health-event query is real architectural debt, but I would leave it for a later refactor with a joined query that preserves the existing `latest_health_event` response shape. The duplicated `animal_count` state is the architectural issue I would address first because it affects correctness as well as design.
