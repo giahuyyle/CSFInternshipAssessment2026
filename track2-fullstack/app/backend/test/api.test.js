@@ -87,6 +87,21 @@ test('GET /api/paddocks returns an array', async () => {
   assert.ok(Array.isArray(body));
 });
 
+// Validation test: paddock capacity must be a positive integer.
+test('POST /api/paddocks rejects invalid capacity', async () => {
+  const negative = await post('/paddocks', {
+    name: 'Invalid Negative Capacity',
+    capacity: -1,
+  });
+  const nonNumeric = await post('/paddocks', {
+    name: 'Invalid Text Capacity',
+    capacity: 'many',
+  });
+
+  assert.equal(negative.status, 422);
+  assert.equal(nonNumeric.status, 422);
+});
+
 // Verifies the animals list includes the latest health event field expected by the frontend.
 test('GET /api/animals returns animals with latest_health_event field', async () => {
   const { status, body } = await get('/animals?page=0&limit=5');
@@ -158,6 +173,64 @@ test('POST /api/animals does not change paddock count when insert fails', async 
   assert.equal(northAfter.animal_count, northBefore.animal_count);
 });
 
+// Validation test: animal creation must reject missing paddock IDs before writing.
+test('POST /api/animals rejects unknown paddock_id', async () => {
+  const { status } = await post('/animals', {
+    name: 'No Paddock',
+    tag_number: 'TAG-NO-PADDOCK',
+    paddock_id: 999999,
+  });
+
+  const { body: animals } = await get('/animals?page=0&limit=50');
+
+  assert.equal(status, 404);
+  assert.equal(animals.some(animal => animal.tag_number === 'TAG-NO-PADDOCK'), false);
+});
+
+// Validation test: animal reassignment must reject missing paddock IDs before changing counts.
+test('PUT /api/animals/:id rejects unknown paddock_id', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=50');
+  const daisy = animals.find(animal => animal.tag_number === 'TAG-002');
+  const { body: paddocksBefore } = await get('/paddocks');
+
+  const { status } = await put(`/animals/${daisy.id}`, {
+    paddock_id: 999999,
+  });
+
+  const { body: updatedDaisy } = await get(`/animals/${daisy.id}`);
+  const { body: paddocksAfter } = await get('/paddocks');
+
+  assert.equal(status, 404);
+  assert.equal(updatedDaisy.paddock_id, daisy.paddock_id);
+  assert.deepEqual(
+    paddocksAfter.map(paddock => [paddock.id, paddock.animal_count]),
+    paddocksBefore.map(paddock => [paddock.id, paddock.animal_count])
+  );
+});
+
+// Validation test: animal creation must not overfill a paddock.
+test('POST /api/animals rejects paddocks at capacity', async () => {
+  const { body: paddock } = await post('/paddocks', {
+    name: 'One Animal Pen',
+    capacity: 1,
+  });
+  await post('/animals', {
+    name: 'First Capacity Animal',
+    tag_number: 'TAG-CAP-001',
+    paddock_id: paddock.id,
+  });
+
+  const { status } = await post('/animals', {
+    name: 'Second Capacity Animal',
+    tag_number: 'TAG-CAP-002',
+    paddock_id: paddock.id,
+  });
+  const { body: paddockAfter } = await get(`/paddocks/${paddock.id}`);
+
+  assert.equal(status, 422);
+  assert.equal(paddockAfter.animal_count, 1);
+});
+
 // Regression test: moving an animal must decrement the old paddock and increment the new one.
 test('PUT /api/animals/:id updates old and new paddock counts when reassigned', async () => {
   const { body: animals } = await get('/animals?page=0&limit=5');
@@ -178,4 +251,31 @@ test('PUT /api/animals/:id updates old and new paddock counts when reassigned', 
   assert.equal(body.paddock_id, southBefore.id);
   assert.equal(northAfter.animal_count, northBefore.animal_count - 1);
   assert.equal(southAfter.animal_count, southBefore.animal_count + 1);
+});
+
+// Validation test: animal reassignment must not overfill a paddock.
+test('PUT /api/animals/:id rejects paddocks at capacity', async () => {
+  const { body: fullPaddock } = await post('/paddocks', {
+    name: 'Full Reassignment Pen',
+    capacity: 1,
+  });
+  await post('/animals', {
+    name: 'Occupying Animal',
+    tag_number: 'TAG-FULL-001',
+    paddock_id: fullPaddock.id,
+  });
+  const { body: mover } = await post('/animals', {
+    name: 'Mover Animal',
+    tag_number: 'TAG-MOVER-001',
+  });
+
+  const { status } = await put(`/animals/${mover.id}`, {
+    paddock_id: fullPaddock.id,
+  });
+  const { body: updatedMover } = await get(`/animals/${mover.id}`);
+  const { body: paddockAfter } = await get(`/paddocks/${fullPaddock.id}`);
+
+  assert.equal(status, 422);
+  assert.equal(updatedMover.paddock_id, null);
+  assert.equal(paddockAfter.animal_count, 1);
 });

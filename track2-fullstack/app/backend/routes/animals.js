@@ -14,6 +14,37 @@ function withTransaction(work) {
   }
 }
 
+function normalizePaddockId(value) {
+  if (value === undefined || value === null) return { paddockId: value };
+
+  const paddockId = Number(value);
+  if (!Number.isInteger(paddockId) || paddockId <= 0) {
+    return { error: { status: 422, message: 'paddock_id must be a positive integer' } };
+  }
+
+  return { paddockId };
+}
+
+function validatePaddockAssignment(value, currentPaddockId = null) {
+  const normalized = normalizePaddockId(value);
+  if (normalized.error) return normalized;
+
+  const { paddockId } = normalized;
+  if (paddockId === undefined || paddockId === null) return { paddockId };
+  if (paddockId === currentPaddockId) return { paddockId };
+
+  const paddock = db.prepare('SELECT * FROM paddocks WHERE id = ?').get(paddockId);
+  if (!paddock) {
+    return { error: { status: 404, message: 'Paddock not found' } };
+  }
+
+  if (paddock.animal_count >= paddock.capacity) {
+    return { error: { status: 422, message: 'Paddock is at capacity' } };
+  }
+
+  return { paddockId };
+}
+
 router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 0;
   const limit = parseInt(req.query.limit) || 10;
@@ -43,17 +74,22 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'name and tag_number are required' });
   }
 
+  const paddockValidation = validatePaddockAssignment(paddock_id);
+  if (paddockValidation.error) {
+    return res.status(paddockValidation.error.status).json({ error: paddockValidation.error.message });
+  }
+
   let animal;
   try {
     animal = withTransaction(() => {
       const result = db.prepare(
         'INSERT INTO animals (name, tag_number, breed, date_of_birth, paddock_id) VALUES (?, ?, ?, ?, ?)'
-      ).run(name, tag_number, breed ?? null, date_of_birth ?? null, paddock_id ?? null);
+      ).run(name, tag_number, breed ?? null, date_of_birth ?? null, paddockValidation.paddockId ?? null);
 
-      if (paddock_id) {
+      if (paddockValidation.paddockId) {
         db.prepare(
           'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
-        ).run(paddock_id);
+        ).run(paddockValidation.paddockId);
       }
 
       return db.prepare('SELECT * FROM animals WHERE id = ?').get(result.lastInsertRowid);
@@ -78,12 +114,18 @@ router.put('/:id', (req, res) => {
   const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
   if (!animal) return res.status(404).json({ error: 'Animal not found' });
 
+  const requestedPaddockId = 'paddock_id' in req.body ? req.body.paddock_id : animal.paddock_id;
+  const paddockValidation = validatePaddockAssignment(requestedPaddockId, animal.paddock_id);
+  if (paddockValidation.error) {
+    return res.status(paddockValidation.error.status).json({ error: paddockValidation.error.message });
+  }
+
   const updates = {
     name:          req.body.name          ?? animal.name,
     tag_number:    req.body.tag_number    ?? animal.tag_number,
     breed:         req.body.breed         ?? animal.breed,
     date_of_birth: req.body.date_of_birth ?? animal.date_of_birth,
-    paddock_id:    'paddock_id' in req.body ? req.body.paddock_id : animal.paddock_id,
+    paddock_id:    paddockValidation.paddockId,
   };
 
   const updated = withTransaction(() => {
