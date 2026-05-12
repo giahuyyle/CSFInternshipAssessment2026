@@ -1,6 +1,6 @@
 # FarmTracker
 
-A livestock record management application for tracking animals, paddock assignments, and health events.
+A livestock record management application for tracking animals, paddock assignments, health events, and weight history.
 
 ## Requirements
 
@@ -37,13 +37,14 @@ app/
 │   │   ├── animals.js     # Animal endpoints
 │   │   └── paddocks.js    # Paddock endpoints
 │   ├── test/
-│   │   └── api.test.js    # Integration tests
-│   ├── seed.js            # Seed script (run once after install)
+│   │   ├── api.test.js    # Paddock, animal, and health-event integration tests
+│   │   └── weights.test.js # Weight tracking integration tests
+│   ├── seed.js            # Seed script with sample animals, health events, and weights
 │   └── package.json
 └── frontend/
     ├── index.html         # Paddocks overview
     ├── animals.html       # Animal list
-    ├── animal-detail.html # Animal detail and health events
+    ├── animal-detail.html # Animal detail, weight history, and health events
     ├── app.js             # Shared fetch utilities
     └── styles.css
 ```
@@ -64,3 +65,18 @@ app/
 | POST | /api/animals/:id/health-events | Log a health event |
 | GET | /api/animals/:id/weights | List weight history, newest first |
 | POST | /api/animals/:id/weights | Log a weight measurement |
+
+### Weight measurements
+
+`POST /api/animals/:id/weights` accepts:
+
+```json
+{
+  "weight_kg": 45.2,
+  "date": "2024-11-15",
+  "notes": "Post-shearing weigh-in"
+}
+```
+
+Successful creates return `201`. Missing or non-positive `weight_kg` returns `422`, and
+unknown animals return `404`.
