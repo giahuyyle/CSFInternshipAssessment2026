@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
 
+function isUniqueConstraintError(err, column) {
+  return err.message?.includes(`UNIQUE constraint failed: ${column}`);
+}
+
 router.get('/', (req, res) => {
   const paddocks = db.prepare('SELECT * FROM paddocks').all();
   res.json(paddocks);
@@ -19,9 +23,18 @@ router.post('/', (req, res) => {
     return res.status(422).json({ error: 'capacity must be a positive integer' });
   }
 
-  const result = db.prepare(
-    'INSERT INTO paddocks (name, capacity) VALUES (?, ?)'
-  ).run(name, parsedCapacity);
+  let result;
+  try {
+    result = db.prepare(
+      'INSERT INTO paddocks (name, capacity) VALUES (?, ?)'
+    ).run(name, parsedCapacity);
+  } catch (err) {
+    if (isUniqueConstraintError(err, 'paddocks.name')) {
+      return res.status(409).json({ error: 'name must be unique' });
+    }
+    throw err;
+  }
+
   const paddock = db.prepare('SELECT * FROM paddocks WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(paddock);
 });

@@ -102,6 +102,17 @@ test('POST /api/paddocks rejects invalid capacity', async () => {
   assert.equal(nonNumeric.status, 422);
 });
 
+// Validation test: paddock names must remain unique.
+test('POST /api/paddocks returns 409 for duplicate names', async () => {
+  const { status, body } = await post('/paddocks', {
+    name: 'North Paddock',
+    capacity: 10,
+  });
+
+  assert.equal(status, 409);
+  assert.equal(body.error, 'name must be unique');
+});
+
 // Verifies the animals list includes the latest health event field expected by the frontend.
 test('GET /api/animals returns animals with latest_health_event field', async () => {
   const { status, body } = await get('/animals?page=0&limit=5');
