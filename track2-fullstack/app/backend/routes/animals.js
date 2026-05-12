@@ -45,9 +45,30 @@ function validatePaddockAssignment(value, currentPaddockId = null) {
   return { paddockId };
 }
 
+function parseOptionalInteger(value, defaultValue, { min, name }) {
+  if (value === undefined) return { value: defaultValue };
+
+  if (typeof value !== 'string' || value.trim() === '') {
+    return { error: { status: 422, message: `${name} must be ${min === 0 ? 'a non-negative' : 'a positive'} integer` } };
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min) {
+    return { error: { status: 422, message: `${name} must be ${min === 0 ? 'a non-negative' : 'a positive'} integer` } };
+  }
+
+  return { value: parsed };
+}
+
 router.get('/', (req, res) => {
-  const page = parseInt(req.query.page) || 0;
-  const limit = parseInt(req.query.limit) || 10;
+  const pageParam = parseOptionalInteger(req.query.page, 0, { min: 0, name: 'page' });
+  if (pageParam.error) return res.status(pageParam.error.status).json({ error: pageParam.error.message });
+
+  const limitParam = parseOptionalInteger(req.query.limit, 10, { min: 1, name: 'limit' });
+  if (limitParam.error) return res.status(limitParam.error.status).json({ error: limitParam.error.message });
+
+  const page = pageParam.value;
+  const limit = limitParam.value;
   const offset = page * limit;
 
   const animals = db.prepare(

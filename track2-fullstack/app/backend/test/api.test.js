@@ -135,6 +135,17 @@ test('GET /api/animals uses page and limit for pagination offset', async () => {
   assert.ok(secondPageIds.every(id => !firstPageIds.includes(id)));
 });
 
+// Validation test: pagination parameters must not produce invalid SQL offsets.
+test('GET /api/animals rejects invalid pagination parameters', async () => {
+  const negativePage = await get('/animals?page=-1&limit=2');
+  const zeroLimit = await get('/animals?page=0&limit=0');
+  const decimalLimit = await get('/animals?page=0&limit=1.5');
+
+  assert.equal(negativePage.status, 422);
+  assert.equal(zeroLimit.status, 422);
+  assert.equal(decimalLimit.status, 422);
+});
+
 // Verifies fetching an existing animal by ID returns that exact animal.
 test('GET /api/animals/:id returns a single animal', async () => {
   const { body: animals } = await get('/animals?page=0&limit=1');
