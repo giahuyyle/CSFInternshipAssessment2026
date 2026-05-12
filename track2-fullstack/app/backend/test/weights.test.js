@@ -107,6 +107,23 @@ test('POST /api/animals/:id/weights rejects missing or non-positive weight_kg', 
   assert.equal(negative.status, 422);
 });
 
+// Validation test: weight dates must sort correctly as ISO calendar dates.
+test('POST /api/animals/:id/weights rejects non-ISO dates', async () => {
+  const animal = await createAnimal('TAG-WEIGHT-DATE-VALIDATION-001');
+
+  const nonIso = await post(`/animals/${animal.id}/weights`, {
+    weight_kg: 45.2,
+    date: '11/15/2024',
+  });
+  const invalidCalendarDate = await post(`/animals/${animal.id}/weights`, {
+    weight_kg: 45.2,
+    date: '2024-02-31',
+  });
+
+  assert.equal(nonIso.status, 422);
+  assert.equal(invalidCalendarDate.status, 422);
+});
+
 // Validation test: weight measurements cannot be logged against missing animals.
 test('POST /api/animals/:id/weights returns 404 for unknown animal', async () => {
   const { status } = await post('/animals/999999/weights', {

@@ -238,6 +238,20 @@ router.get('/:id/weights', (req, res) => {
   res.json(weights);
 });
 
+function isIsoDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  const normalized = parsed.toISOString().slice(0, 10);
+  return normalized === value;
+}
+
 router.post('/:id/weights', (req, res) => {
   const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
   if (!animal) return res.status(404).json({ error: 'Animal not found' });
@@ -249,6 +263,9 @@ router.post('/:id/weights', (req, res) => {
   }
   if (!date) {
     return res.status(422).json({ error: 'date is required' });
+  }
+  if (!isIsoDate(date)) {
+    return res.status(422).json({ error: 'date must be in YYYY-MM-DD format' });
   }
 
   const result = db.prepare(
