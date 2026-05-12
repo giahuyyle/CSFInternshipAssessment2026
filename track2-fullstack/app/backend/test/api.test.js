@@ -69,12 +69,23 @@ async function post(path, body) {
   return { status: res.status, body: await res.json() };
 }
 
+async function put(path, body) {
+  const res = await fetch(baseUrl + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+// Verifies the paddocks collection endpoint returns a usable list response.
 test('GET /api/paddocks returns an array', async () => {
   const { status, body } = await get('/paddocks');
   assert.equal(status, 200);
   assert.ok(Array.isArray(body));
 });
 
+// Verifies the animals list includes the latest health event field expected by the frontend.
 test('GET /api/animals returns animals with latest_health_event field', async () => {
   const { status, body } = await get('/animals?page=0&limit=5');
   assert.equal(status, 200);
@@ -83,6 +94,7 @@ test('GET /api/animals returns animals with latest_health_event field', async ()
   assert.ok('latest_health_event' in body[0]);
 });
 
+// Verifies fetching an existing animal by ID returns that exact animal.
 test('GET /api/animals/:id returns a single animal', async () => {
   const { body: animals } = await get('/animals?page=0&limit=1');
   const id = animals[0].id;
@@ -91,11 +103,13 @@ test('GET /api/animals/:id returns a single animal', async () => {
   assert.equal(body.id, id);
 });
 
+// Verifies missing animals return a clear not-found response.
 test('GET /api/animals/:id returns 404 for unknown id', async () => {
   const { status } = await get('/animals/999999');
   assert.equal(status, 404);
 });
 
+// Verifies health events can be created for an existing animal.
 test('POST /api/animals/:id/health-events creates an event', async () => {
   const { body: animals } = await get('/animals?page=0&limit=1');
   const id = animals[0].id;
@@ -107,4 +121,46 @@ test('POST /api/animals/:id/health-events creates an event', async () => {
   assert.equal(status, 201);
   assert.equal(body.event_type, 'checkup');
   assert.equal(body.animal_id, id);
+});
+
+// Regression test: failed animal creation must not leave paddock counts inflated.
+test('POST /api/animals does not change paddock count when insert fails', async () => {
+  const { body: paddocksBefore } = await get('/paddocks');
+  const northBefore = paddocksBefore.find(paddock => paddock.name === 'North Paddock');
+
+  const { status } = await post('/animals', {
+    name: 'Duplicate Bella',
+    tag_number: 'TAG-001',
+    breed: 'Merino',
+    date_of_birth: '2024-01-01',
+    paddock_id: northBefore.id,
+  });
+
+  const { body: paddocksAfter } = await get('/paddocks');
+  const northAfter = paddocksAfter.find(paddock => paddock.id === northBefore.id);
+
+  assert.equal(status, 409);
+  assert.equal(northAfter.animal_count, northBefore.animal_count);
+});
+
+// Regression test: moving an animal must decrement the old paddock and increment the new one.
+test('PUT /api/animals/:id updates old and new paddock counts when reassigned', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=5');
+  const bella = animals.find(animal => animal.tag_number === 'TAG-001');
+  const { body: paddocksBefore } = await get('/paddocks');
+  const northBefore = paddocksBefore.find(paddock => paddock.name === 'North Paddock');
+  const southBefore = paddocksBefore.find(paddock => paddock.name === 'South Paddock');
+
+  const { status, body } = await put(`/animals/${bella.id}`, {
+    paddock_id: southBefore.id,
+  });
+
+  const { body: paddocksAfter } = await get('/paddocks');
+  const northAfter = paddocksAfter.find(paddock => paddock.id === northBefore.id);
+  const southAfter = paddocksAfter.find(paddock => paddock.id === southBefore.id);
+
+  assert.equal(status, 200);
+  assert.equal(body.paddock_id, southBefore.id);
+  assert.equal(northAfter.animal_count, northBefore.animal_count - 1);
+  assert.equal(southAfter.animal_count, southBefore.animal_count + 1);
 });
