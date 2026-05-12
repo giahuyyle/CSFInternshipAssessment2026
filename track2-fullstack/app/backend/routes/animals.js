@@ -14,6 +14,10 @@ function withTransaction(work) {
   }
 }
 
+function isUniqueConstraintError(err, column) {
+  return err.message?.includes(`UNIQUE constraint failed: ${column}`);
+}
+
 function normalizePaddockId(value) {
   if (value === undefined || value === null) return { paddockId: value };
 
@@ -116,7 +120,7 @@ router.post('/', (req, res) => {
       return db.prepare('SELECT * FROM animals WHERE id = ?').get(result.lastInsertRowid);
     });
   } catch (err) {
-    if (err.message?.includes('UNIQUE constraint failed: animals.tag_number')) {
+    if (isUniqueConstraintError(err, 'animals.tag_number')) {
       return res.status(409).json({ error: 'tag_number must be unique' });
     }
     throw err;
@@ -149,29 +153,37 @@ router.put('/:id', (req, res) => {
     paddock_id:    paddockValidation.paddockId,
   };
 
-  const updated = withTransaction(() => {
-    if (updates.paddock_id !== animal.paddock_id) {
-      if (animal.paddock_id) {
-        db.prepare(
-          'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
-        ).run(animal.paddock_id);
+  let updated;
+  try {
+    updated = withTransaction(() => {
+      if (updates.paddock_id !== animal.paddock_id) {
+        if (animal.paddock_id) {
+          db.prepare(
+            'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
+          ).run(animal.paddock_id);
+        }
+
+        if (updates.paddock_id) {
+          db.prepare(
+            'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
+          ).run(updates.paddock_id);
+        }
       }
 
-      if (updates.paddock_id) {
-        db.prepare(
-          'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
-        ).run(updates.paddock_id);
-      }
+      db.prepare(`
+        UPDATE animals
+        SET name = ?, tag_number = ?, breed = ?, date_of_birth = ?, paddock_id = ?
+        WHERE id = ?
+      `).run(updates.name, updates.tag_number, updates.breed, updates.date_of_birth, updates.paddock_id, req.params.id);
+
+      return db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
+    });
+  } catch (err) {
+    if (isUniqueConstraintError(err, 'animals.tag_number')) {
+      return res.status(409).json({ error: 'tag_number must be unique' });
     }
-
-    db.prepare(`
-      UPDATE animals
-      SET name = ?, tag_number = ?, breed = ?, date_of_birth = ?, paddock_id = ?
-      WHERE id = ?
-    `).run(updates.name, updates.tag_number, updates.breed, updates.date_of_birth, updates.paddock_id, req.params.id);
-
-    return db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
-  });
+    throw err;
+  }
   res.json(updated);
 });
 

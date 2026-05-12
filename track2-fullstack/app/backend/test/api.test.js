@@ -242,6 +242,31 @@ test('PUT /api/animals/:id rejects unknown paddock_id', async () => {
   );
 });
 
+// Validation test: updating an animal cannot duplicate another tag number.
+test('PUT /api/animals/:id returns 409 for duplicate tag_number and rolls back paddock counts', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=50');
+  const daisy = animals.find(animal => animal.tag_number === 'TAG-002');
+  const bella = animals.find(animal => animal.tag_number === 'TAG-001');
+  const { body: paddocksBefore } = await get('/paddocks');
+
+  const { status, body } = await put(`/animals/${daisy.id}`, {
+    tag_number: bella.tag_number,
+    paddock_id: bella.paddock_id,
+  });
+
+  const { body: updatedDaisy } = await get(`/animals/${daisy.id}`);
+  const { body: paddocksAfter } = await get('/paddocks');
+
+  assert.equal(status, 409);
+  assert.equal(body.error, 'tag_number must be unique');
+  assert.equal(updatedDaisy.tag_number, daisy.tag_number);
+  assert.equal(updatedDaisy.paddock_id, daisy.paddock_id);
+  assert.deepEqual(
+    paddocksAfter.map(paddock => [paddock.id, paddock.animal_count]),
+    paddocksBefore.map(paddock => [paddock.id, paddock.animal_count])
+  );
+});
+
 // Validation test: animal creation must not overfill a paddock.
 test('POST /api/animals rejects paddocks at capacity', async () => {
   const { body: paddock } = await post('/paddocks', {
